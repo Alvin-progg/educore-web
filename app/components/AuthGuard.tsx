@@ -16,7 +16,6 @@ export default function AuthGuard({ children }: { children: React.ReactNode }) {
       if (!u) {
         // If there is no user, redirect to login
         router.replace("/login");
-        toast.error("You must be logged in to access this page.");
       }
     });
 
