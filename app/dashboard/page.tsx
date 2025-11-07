@@ -6,7 +6,7 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged , User  , signOut} from "firebase/auth";
 export default function DashboardPage() {
     const router = useRouter();
-
+    
 
     useEffect(() => {
         const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -21,7 +21,6 @@ export default function DashboardPage() {
     return (
         <AuthGuard>
             <h1>Welcome to the Dashboard</h1>
-
             <button onClick={() => signOut(auth)}>Sign Out</button>
         </AuthGuard>
     );
