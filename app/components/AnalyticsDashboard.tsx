@@ -64,11 +64,24 @@ export default function AnalyticsDashboard() {
     }))
     .sort((a, b) => b.students - a.students);
 
-  // Create performance trend data - showing student count by grade range (actual data)
-  const performanceTrendData = analytics.gradeDistribution.map((item) => ({
-    range: item.range,
-    students: item.count,
-  }));
+  // Create performance trend data - showing student count by GWA ranges
+  const gwaRanges = [
+    { range: "1.0-1.25", min: 1.0, max: 1.25 },
+    { range: "1.26-1.75", min: 1.26, max: 1.75 },
+    { range: "1.76-2.0", min: 1.76, max: 2.0 },
+    { range: "2.01-2.5", min: 2.01, max: 2.5 },
+    { range: "2.51-3.0", min: 2.51, max: 3.0 },
+  ];
+
+  const performanceTrendData = gwaRanges.map((range) => {
+    const count = students.filter(
+      (student) => student.gwa >= range.min && student.gwa <= range.max
+    ).length;
+    return {
+      range: range.range,
+      students: count,
+    };
+  });
 
   // Map grade distribution for compatibility
   const pieData = analytics.gradeDistribution.map((item) => ({
