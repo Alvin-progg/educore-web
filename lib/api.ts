@@ -19,16 +19,45 @@ const apiClient = axios.create({
 });
 
 // Add request interceptor to include Firebase auth token
+import { auth } from './firebase';
+
 apiClient.interceptors.request.use(
   async (config) => {
-    // You can add Firebase auth token here if needed
-    // const token = await auth.currentUser?.getIdToken();
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
+    // Get Firebase auth token and add to request headers
+    try {
+      const user = auth.currentUser;
+      if (user) {
+        const token = await user.getIdToken();
+        config.headers.Authorization = `Bearer ${token}`;
+      } else {
+        // If no user, wait a bit for auth to initialize
+        await new Promise(resolve => setTimeout(resolve, 100));
+        const retryUser = auth.currentUser;
+        if (retryUser) {
+          const token = await retryUser.getIdToken();
+          config.headers.Authorization = `Bearer ${token}`;
+        }
+      }
+    } catch (error) {
+      console.error('Error getting auth token:', error);
+    }
     return config;
   },
   (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Add response interceptor to handle 401 errors
+apiClient.interceptors.response.use(
+  (response) => response,
+  (error) => {
+    if (error.response?.status === 401) {
+      // Clear auth state and redirect to login
+      auth.signOut().then(() => {
+        window.location.href = '/login';
+      });
+    }
     return Promise.reject(error);
   }
 );

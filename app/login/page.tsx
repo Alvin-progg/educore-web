@@ -21,9 +21,10 @@ export default function LoginPage() {
             await signInWithEmailAndPassword(auth, email, password);
             toast.success("Login successful!");
             router.push("/dashboard");
-        } catch (error) {
-            toast.error("Login failed. Please check your credentials.");
-            console.error(error);
+        } catch (error: any) {
+            console.error("Login error:", error);
+            const errorMessage = error?.message || "Login failed. Please check your credentials.";
+            toast.error(errorMessage);
         } finally {
             setLoading(false);
         }

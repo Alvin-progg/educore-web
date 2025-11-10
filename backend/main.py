@@ -1,6 +1,7 @@
 """
 EduCore Academic Management System - Backend API
-FastAPI server for managing students, courses, and grades
+FastAPI server with Firebase Auth + MySQL for user-scoped data isolation
+Each user (identified by Firebase UID) can only see/modify their own data
 """
 from fastapi import FastAPI, HTTPException, Depends
 from fastapi.middleware.cors import CORSMiddleware
@@ -15,6 +16,7 @@ from schemas import (
     GradeCreate, GradeResponse,
     CourseResponse, GWAReportResponse
 )
+from firebase_auth import get_current_user_uid
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
@@ -92,29 +94,43 @@ async def startup_event():
     db.close()
 
 
-# ==================== Student Endpoints ====================
+# ==================== Student Endpoints (USER-SCOPED) ====================
 
 @app.get("/api/students", response_model=List[StudentResponse])
-def get_all_students(db: Session = Depends(get_db)):
-    """Get all students with their GWA"""
-    students = db.query(Student).order_by(Student.name).all()
+def get_all_students(
+    uid: str = Depends(get_current_user_uid),  # Get Firebase UID from token
+    db: Session = Depends(get_db)
+):
+    """Get all students for THIS USER ONLY (filtered by uid)"""
+    students = db.query(Student).filter(
+        Student.uid == uid  # Only return students belonging to this user
+    ).order_by(Student.name).all()
     return students
 
 
 @app.post("/api/students", response_model=StudentResponse)
-def add_student(student: StudentCreate, db: Session = Depends(get_db)):
-    """Add a new student"""
-    # Check if student code already exists
-    existing = db.query(Student).filter(Student.student_code == student.student_code).first()
+def add_student(
+    student: StudentCreate,
+    uid: str = Depends(get_current_user_uid),  # Get Firebase UID from token
+    db: Session = Depends(get_db)
+):
+    """Add a new student FOR THIS USER (uid is attached automatically)"""
+    # Check if student code already exists FOR THIS USER
+    existing = db.query(Student).filter(
+        Student.uid == uid,
+        Student.student_code == student.student_code
+    ).first()
     if existing:
-        raise HTTPException(status_code=400, detail="Student code already exists")
+        raise HTTPException(status_code=400, detail="Student code already exists in your account")
     
     # Check if course exists
     course = db.query(Course).filter(Course.code == student.course_code).first()
     if not course:
         raise HTTPException(status_code=400, detail="Course not found")
     
+    # Create student with uid attached
     new_student = Student(
+        uid=uid,  # Attach the user's Firebase UID
         student_code=student.student_code,
         name=student.name,
         course_code=student.course_code
@@ -126,18 +142,33 @@ def add_student(student: StudentCreate, db: Session = Depends(get_db)):
 
 
 @app.get("/api/students/{student_code}", response_model=StudentResponse)
-def get_student(student_code: str, db: Session = Depends(get_db)):
-    """Get a specific student by code"""
-    student = db.query(Student).filter(Student.student_code == student_code).first()
+def get_student(
+    student_code: str,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Get a specific student (only if it belongs to THIS USER)"""
+    student = db.query(Student).filter(
+        Student.uid == uid,  # Filter by user's UID
+        Student.student_code == student_code
+    ).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     return student
 
 
 @app.put("/api/students/{student_code}", response_model=StudentResponse)
-def update_student(student_code: str, student_update: StudentUpdate, db: Session = Depends(get_db)):
-    """Update student's course"""
-    student = db.query(Student).filter(Student.student_code == student_code).first()
+def update_student(
+    student_code: str,
+    student_update: StudentUpdate,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Update student's course (only if it belongs to THIS USER)"""
+    student = db.query(Student).filter(
+        Student.uid == uid,  # Filter by user's UID
+        Student.student_code == student_code
+    ).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -153,14 +184,24 @@ def update_student(student_code: str, student_update: StudentUpdate, db: Session
 
 
 @app.delete("/api/students/{student_code}")
-def delete_student(student_code: str, db: Session = Depends(get_db)):
-    """Delete a student and all their grades"""
-    student = db.query(Student).filter(Student.student_code == student_code).first()
+def delete_student(
+    student_code: str,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Delete a student and all their grades (only if it belongs to THIS USER)"""
+    student = db.query(Student).filter(
+        Student.uid == uid,  # Filter by user's UID
+        Student.student_code == student_code
+    ).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
-    # Delete all grades for this student
-    db.query(Grade).filter(Grade.student_code == student_code).delete()
+    # Delete all grades for this student (that belong to this user)
+    db.query(Grade).filter(
+        Grade.uid == uid,
+        Grade.student_id == student.id
+    ).delete()
     
     # Delete student
     db.delete(student)
@@ -186,17 +227,25 @@ def get_course_subjects(course_code: str, db: Session = Depends(get_db)):
     return subjects
 
 
-# ==================== Grade Endpoints ====================
+# ==================== Grade Endpoints (USER-SCOPED) ====================
 
 @app.get("/api/grades/{student_code}", response_model=List[GradeResponse])
-def get_student_grades(student_code: str, db: Session = Depends(get_db)):
-    """Get all grades for a specific student"""
-    student = db.query(Student).filter(Student.student_code == student_code).first()
+def get_student_grades(
+    student_code: str,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Get all grades for a specific student (only if student belongs to THIS USER)"""
+    student = db.query(Student).filter(
+        Student.uid == uid,  # Filter by user's UID
+        Student.student_code == student_code
+    ).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
     grades = db.query(Grade).filter(
-        Grade.student_code == student_code
+        Grade.uid == uid,  # Filter by user's UID
+        Grade.student_id == student.id
     ).order_by(Grade.subject_code).all()
     
     # Add formatted data
@@ -204,7 +253,7 @@ def get_student_grades(student_code: str, db: Session = Depends(get_db)):
     for grade in grades:
         result.append({
             "id": grade.id,
-            "student_code": grade.student_code,
+            "student_code": student_code,
             "subject_code": grade.subject_code,
             "subject_name": grade.subject_name,
             "grade": grade.grade,
@@ -216,10 +265,17 @@ def get_student_grades(student_code: str, db: Session = Depends(get_db)):
 
 
 @app.post("/api/grades", response_model=GradeResponse)
-def add_grade(grade_data: GradeCreate, db: Session = Depends(get_db)):
-    """Add or update a grade for a student"""
-    # Verify student exists
-    student = db.query(Student).filter(Student.student_code == grade_data.student_code).first()
+def add_grade(
+    grade_data: GradeCreate,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Add or update a grade for a student (only if student belongs to THIS USER)"""
+    # Verify student exists AND belongs to this user
+    student = db.query(Student).filter(
+        Student.uid == uid,  # Filter by user's UID
+        Student.student_code == grade_data.student_code
+    ).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -227,9 +283,10 @@ def add_grade(grade_data: GradeCreate, db: Session = Depends(get_db)):
     if grade_data.grade < 1.0 or grade_data.grade > 5.0:
         raise HTTPException(status_code=400, detail="Grade must be between 1.0 and 5.0")
     
-    # Check if grade already exists for this student and subject
+    # Check if grade already exists for this student and subject (for this user)
     existing_grade = db.query(Grade).filter(
-        Grade.student_code == grade_data.student_code,
+        Grade.uid == uid,
+        Grade.student_id == student.id,
         Grade.subject_code == grade_data.subject_code
     ).first()
     
@@ -241,9 +298,10 @@ def add_grade(grade_data: GradeCreate, db: Session = Depends(get_db)):
         db.refresh(existing_grade)
         grade_obj = existing_grade
     else:
-        # Create new grade
+        # Create new grade with uid attached
         new_grade = Grade(
-            student_code=grade_data.student_code,
+            uid=uid,  # Attach the user's Firebase UID
+            student_id=student.id,
             subject_code=grade_data.subject_code,
             subject_name=grade_data.subject_name,
             grade=grade_data.grade
@@ -254,11 +312,11 @@ def add_grade(grade_data: GradeCreate, db: Session = Depends(get_db)):
         grade_obj = new_grade
     
     # Update student's GWA
-    update_student_gwa(grade_data.student_code, db)
+    update_student_gwa(student.id, uid, db)
     
     return {
         "id": grade_obj.id,
-        "student_code": grade_obj.student_code,
+        "student_code": grade_data.student_code,
         "subject_code": grade_obj.subject_code,
         "subject_name": grade_obj.subject_name,
         "grade": grade_obj.grade,
@@ -268,9 +326,17 @@ def add_grade(grade_data: GradeCreate, db: Session = Depends(get_db)):
 
 
 @app.put("/api/grades/{grade_id}", response_model=GradeResponse)
-def update_grade(grade_id: int, grade_data: GradeCreate, db: Session = Depends(get_db)):
-    """Update an existing grade"""
-    grade = db.query(Grade).filter(Grade.id == grade_id).first()
+def update_grade(
+    grade_id: int,
+    grade_data: GradeCreate,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Update an existing grade (only if it belongs to THIS USER)"""
+    grade = db.query(Grade).filter(
+        Grade.uid == uid,  # Filter by user's UID
+        Grade.id == grade_id
+    ).first()
     if not grade:
         raise HTTPException(status_code=404, detail="Grade not found")
     
@@ -284,11 +350,14 @@ def update_grade(grade_id: int, grade_data: GradeCreate, db: Session = Depends(g
     db.refresh(grade)
     
     # Update student's GWA
-    update_student_gwa(grade.student_code, db)
+    update_student_gwa(grade.student_id, uid, db)
+    
+    # Get student code for response
+    student = db.query(Student).filter(Student.id == grade.student_id).first()
     
     return {
         "id": grade.id,
-        "student_code": grade.student_code,
+        "student_code": student.student_code if student else "",
         "subject_code": grade.subject_code,
         "subject_name": grade.subject_name,
         "grade": grade.grade,
@@ -298,26 +367,40 @@ def update_grade(grade_id: int, grade_data: GradeCreate, db: Session = Depends(g
 
 
 @app.delete("/api/grades/{grade_id}")
-def delete_grade(grade_id: int, db: Session = Depends(get_db)):
-    """Delete a grade"""
-    grade = db.query(Grade).filter(Grade.id == grade_id).first()
+def delete_grade(
+    grade_id: int,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Delete a grade (only if it belongs to THIS USER)"""
+    grade = db.query(Grade).filter(
+        Grade.uid == uid,  # Filter by user's UID
+        Grade.id == grade_id
+    ).first()
     if not grade:
         raise HTTPException(status_code=404, detail="Grade not found")
     
-    student_code = grade.student_code
+    student_id = grade.student_id
     db.delete(grade)
     db.commit()
     
     # Update student's GWA
-    update_student_gwa(student_code, db)
+    update_student_gwa(student_id, uid, db)
     
     return {"message": "Grade deleted successfully"}
 
 
 @app.get("/api/students/{student_code}/qr-code")
-def get_student_qr_code(student_code: str, db: Session = Depends(get_db)):
-    """Generate QR code URL for a student"""
-    student = db.query(Student).filter(Student.student_code == student_code).first()
+def get_student_qr_code(
+    student_code: str,
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Generate QR code URL for a student (only if it belongs to THIS USER)"""
+    student = db.query(Student).filter(
+        Student.uid == uid,  # Filter by user's UID
+        Student.student_code == student_code
+    ).first()
     if not student:
         raise HTTPException(status_code=404, detail="Student not found")
     
@@ -333,12 +416,17 @@ def get_student_qr_code(student_code: str, db: Session = Depends(get_db)):
     }
 
 
-# ==================== Report Endpoints ====================
+# ==================== Report Endpoints (USER-SCOPED) ====================
 
 @app.get("/api/gwa-report", response_model=List[GWAReportResponse])
-def get_gwa_report(db: Session = Depends(get_db)):
-    """Get GWA report for all students"""
-    students = db.query(Student).order_by(Student.name).all()
+def get_gwa_report(
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Get GWA report for all students (only THIS USER's students)"""
+    students = db.query(Student).filter(
+        Student.uid == uid  # Filter by user's UID
+    ).order_by(Student.name).all()
     
     result = []
     for student in students:
@@ -356,15 +444,19 @@ def get_gwa_report(db: Session = Depends(get_db)):
 
 # ==================== Helper Functions ====================
 
-def update_student_gwa(student_code: str, db: Session):
+def update_student_gwa(student_id: int, uid: str, db: Session):
     """Calculate and update GWA for a student"""
     from sqlalchemy import func
     
     avg_grade = db.query(func.avg(Grade.grade)).filter(
-        Grade.student_code == student_code
+        Grade.uid == uid,
+        Grade.student_id == student_id
     ).scalar()
     
-    student = db.query(Student).filter(Student.student_code == student_code).first()
+    student = db.query(Student).filter(
+        Student.uid == uid,
+        Student.id == student_id
+    ).first()
     if student:
         student.gwa = round(float(avg_grade), 2) if avg_grade else 0.0
         db.commit()
@@ -393,27 +485,33 @@ def format_grade(grade: float) -> str:
     return f"{grade:.2f}"
 
 
-# ==================== Analytics Endpoints ====================
+# ==================== Analytics Endpoints (USER-SCOPED) ====================
 
 @app.get("/api/analytics/overview")
-def get_analytics_overview(db: Session = Depends(get_db)):
-    """Get overview statistics for analytics dashboard"""
+def get_analytics_overview(
+    uid: str = Depends(get_current_user_uid),
+    db: Session = Depends(get_db)
+):
+    """Get overview statistics for analytics dashboard (only THIS USER's data)"""
     from sqlalchemy import func
     
-    # Total counts
-    total_students = db.query(Student).count()
+    # Total counts for this user only
+    total_students = db.query(Student).filter(Student.uid == uid).count()
     total_courses = db.query(Course).count()
-    total_grades = db.query(Grade).count()
+    total_grades = db.query(Grade).filter(Grade.uid == uid).count()
     
-    # Average GWA across all students
-    avg_gwa = db.query(func.avg(Student.gwa)).filter(Student.gwa > 0).scalar()
+    # Average GWA across this user's students
+    avg_gwa = db.query(func.avg(Student.gwa)).filter(
+        Student.uid == uid,
+        Student.gwa > 0
+    ).scalar()
     avg_gwa = round(float(avg_gwa), 2) if avg_gwa else 0.0
     
-    # Students per course
+    # Students per course (this user only)
     students_per_course = db.query(
         Student.course_code,
         func.count(Student.id).label('count')
-    ).group_by(Student.course_code).all()
+    ).filter(Student.uid == uid).group_by(Student.course_code).all()
     
     course_distribution = [
         {"course": course, "count": count}
@@ -432,6 +530,7 @@ def get_analytics_overview(db: Session = Depends(get_db)):
     grade_distribution = []
     for grade_range in grade_ranges:
         count = db.query(Grade).filter(
+            Grade.uid == uid,  # Filter by user's UID
             Grade.grade >= grade_range["min"],
             Grade.grade <= grade_range["max"]
         ).count()
@@ -440,8 +539,9 @@ def get_analytics_overview(db: Session = Depends(get_db)):
             "count": count
         })
     
-    # Top performers (students with GWA <= 1.75)
+    # Top performers (this user's students with GWA <= 1.75)
     top_performers = db.query(Student).filter(
+        Student.uid == uid,  # Filter by user's UID
         Student.gwa > 0,
         Student.gwa <= 1.75
     ).order_by(Student.gwa).limit(10).all()
@@ -456,11 +556,14 @@ def get_analytics_overview(db: Session = Depends(get_db)):
         for s in top_performers
     ]
     
-    # GWA per course
+    # GWA per course (this user only)
     gwa_per_course = db.query(
         Student.course_code,
         func.avg(Student.gwa).label('avg_gwa')
-    ).filter(Student.gwa > 0).group_by(Student.course_code).all()
+    ).filter(
+        Student.uid == uid,  # Filter by user's UID
+        Student.gwa > 0
+    ).group_by(Student.course_code).all()
     
     course_performance = [
         {"course": course, "avg_gwa": round(float(avg), 2)}
