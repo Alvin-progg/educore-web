@@ -4,3 +4,5 @@ sqlalchemy==2.0.23
 mysql-connector-python==8.2.0
 python-dotenv==1.0.0
 pydantic==2.5.0
+firebase-admin==6.3.0
+firebase-admin==6.3.0

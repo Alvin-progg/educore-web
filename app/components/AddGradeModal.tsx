@@ -107,15 +107,15 @@ export default function AddGradeModal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg p-6 w-full max-w-md">
+    <div className="fixed inset-0 bg-black bg-opacity-70 flex items-center justify-center z-50">
+      <div className="bg-slate-800 border border-slate-700 rounded-lg p-6 w-full max-w-md">
         <div className="flex justify-between items-center mb-4">
-          <h2 className="text-2xl font-bold text-gray-800">
+          <h2 className="text-2xl font-bold text-white">
             {editingGrade ? 'Edit Grade' : 'Add New Grade'}
           </h2>
           <button
             onClick={onClose}
-            className="text-gray-500 hover:text-gray-700 transition"
+            className="text-slate-400 hover:text-white transition"
           >
             <X size={24} />
           </button>
@@ -123,18 +123,18 @@ export default function AddGradeModal({
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
               Subject
             </label>
             {loadingSubjects ? (
-              <div className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-500">
+              <div className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-slate-400">
                 Loading subjects...
               </div>
             ) : subjects.length > 0 ? (
               <select
                 value={formData.subject}
                 onChange={(e) => handleSubjectChange(e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                className="w-full px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
                 required
               >
                 <option value="">Select a subject</option>
@@ -145,14 +145,14 @@ export default function AddGradeModal({
                 ))}
               </select>
             ) : (
-              <div className="w-full px-3 py-2 border border-gray-300 rounded-md text-gray-500">
+              <div className="w-full px-3 py-2 bg-slate-900 border border-slate-700 rounded-md text-slate-400">
                 No subjects available for this course
               </div>
             )}
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
               Grade (1.0 - 5.0)
             </label>
             <input
@@ -162,23 +162,23 @@ export default function AddGradeModal({
               max="5.0"
               value={formData.grade || ''}
               onChange={(e) => setFormData({ ...formData, grade: parseFloat(e.target.value) || 0 })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               required
             />
-            <p className="text-xs text-gray-500 mt-1">
+            <p className="text-xs text-slate-400 mt-1">
               Philippine grading system: 1.0 (highest) to 5.0 (lowest)
             </p>
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-300 mb-2">
               Description (Optional)
             </label>
             <input
               type="text"
               value={formData.semester || ''}
               onChange={(e) => setFormData({ ...formData, semester: e.target.value })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full px-3 py-2 bg-slate-900 border border-slate-700 text-white rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               placeholder="e.g., Midterm, Final, 1st Semester"
             />
           </div>
@@ -187,14 +187,14 @@ export default function AddGradeModal({
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition"
+              className="flex-1 px-4 py-2 border border-slate-600 text-slate-300 rounded-md hover:bg-slate-700 transition"
               disabled={loading}
             >
               Cancel
             </button>
             <button
               type="submit"
-              className="flex-1 px-4 py-2 bg-indigo-600 text-white rounded-md hover:bg-indigo-700 transition disabled:opacity-50"
+              className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition disabled:opacity-50"
               disabled={loading || loadingSubjects}
             >
               {loading ? 'Saving...' : editingGrade ? 'Update Grade' : 'Add Grade'}
